@@ -66,7 +66,7 @@ export interface VideosResponse {
   }>;
 }
 
-function useMock(): boolean {
+function shouldUseMock(): boolean {
   return (
     !KEY ||
     KEY.trim() === "" ||
@@ -143,7 +143,7 @@ export function mapVideosResponse(json: VideosResponse): Video[] {
 }
 
 export async function getChannelData(): Promise<YouTubeResult<Channel>> {
-  if (useMock()) return { data: mockChannel, isMock: true };
+  if (shouldUseMock()) return { data: mockChannel, isMock: true };
   try {
     const json = await ytFetch<ChannelsResponse>("channels", {
       part: "snippet,statistics,brandingSettings",
@@ -156,7 +156,7 @@ export async function getChannelData(): Promise<YouTubeResult<Channel>> {
 }
 
 export async function getStreams(): Promise<YouTubeResult<Video[]>> {
-  if (useMock()) return { data: mockVideos, isMock: true };
+  if (shouldUseMock()) return { data: mockVideos, isMock: true };
   try {
     const [live, recent] = await Promise.all([
       ytFetch<SearchResponse>("search", {
