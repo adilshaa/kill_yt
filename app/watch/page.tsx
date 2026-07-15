@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import VideoPlayer from "@/components/VideoPlayer";
 import VideoCard from "@/components/VideoCard";
 import { getChannelData, getWatchData } from "@/lib/youtube";
@@ -16,23 +17,20 @@ function timeAgo(iso: string): string {
   return `${d}d ago`;
 }
 
-export default function WatchPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ v?: string }>;
-}) {
-  const [videoId, setVideoId] = useState<string | null>(null);
+function WatchContent() {
+  const searchParams = useSearchParams();
+  const videoId = searchParams.get("v");
   const [video, setVideo] = useState<Video | null>(null);
   const [channel, setChannel] = useState<Channel | null>(null);
   const [suggestions, setSuggestions] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    searchParams.then((sp) => setVideoId(sp.v ?? null));
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (!videoId) return;
+    if (!videoId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(false);
+      return;
+    }
     let active = true;
     (async () => {
       try {
@@ -45,6 +43,7 @@ export default function WatchPage({
         setSuggestions(watch.data.suggestions);
         setChannel(chan.data);
       } finally {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (active) setLoading(false);
       }
     })();
@@ -55,86 +54,81 @@ export default function WatchPage({
 
   if (!videoId) {
     return (
-      <main className="min-h-dvh">
-        <TopBar onBack={() => {}} />
-        <p className="px-4 py-10 text-center text-sm text-[var(--muted)]">
-          No video specified.
-        </p>
-      </main>
+      <p className="px-4 py-10 text-center text-sm text-[var(--muted)]">
+        No video specified.
+      </p>
     );
   }
 
   return (
-    <main className="min-h-dvh">
-      <TopBar onBack={() => history.back()} />
-      {loading ? (
-        <p className="px-4 py-10 text-center text-sm text-[var(--muted)]">
-          Loading…
+    <>
+      <VideoPlayer videoId={videoId} />
+      <section className="px-3 py-3">
+        <h1 className="text-base font-semibold leading-snug">{video?.title}</h1>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          {video?.isLive && video.liveViewers
+            ? `${video.liveViewers} watching · `
+            : ""}
+          {video?.isUpcoming
+            ? "Scheduled"
+            : `${video?.viewCount ?? "0"} views · ${
+                video ? timeAgo(video.publishedAt) : ""
+              }`}
         </p>
-      ) : (
-        <>
-          <VideoPlayer videoId={videoId} />
-          <section className="px-3 py-3">
-            <h1 className="text-base font-semibold leading-snug">
-              {video?.title}
-            </h1>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              {video?.isLive && video.liveViewers
-                ? `${video.liveViewers} watching · `
-                : ""}
-              {video?.isUpcoming
-                ? "Scheduled"
-                : `${video?.viewCount ?? "0"} views · ${
-                    video ? timeAgo(video.publishedAt) : ""
-                  }`}
-            </p>
 
-            {channel && (
-              <div className="mt-3 flex items-center gap-3 border-y border-zinc-800 py-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={channel.avatarUrl}
-                  alt=""
-                  className="h-10 w-10 rounded-full bg-zinc-700 object-cover"
-                />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">
-                    {channel.title}
-                  </p>
-                  <p className="text-xs text-[var(--muted)]">
-                    {channel.subscriberCount} subscribers
-                  </p>
-                </div>
-                <a
-                  href={`https://www.youtube.com/channel/${channel.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="ml-auto rounded-full bg-[var(--accent)] px-4 py-1.5 text-sm font-semibold text-white"
-                >
-                  Subscribe
-                </a>
-              </div>
-            )}
-
-            <h2 className="mb-1 mt-4 text-sm font-bold">Up next</h2>
-            <div className="flex flex-col">
-              {suggestions.map((s) => (
-                <VideoCard key={s.id} video={s} />
-              ))}
+        {channel && (
+          <div className="mt-3 flex items-center gap-3 border-y border-zinc-800 py-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={channel.avatarUrl}
+              alt=""
+              className="h-10 w-10 rounded-full bg-zinc-700 object-cover"
+            />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">{channel.title}</p>
+              <p className="text-xs text-[var(--muted)]">
+                {channel.subscriberCount} subscribers
+              </p>
             </div>
-          </section>
-        </>
-      )}
-    </main>
+            <a
+              href={`https://www.youtube.com/channel/${channel.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto rounded-full bg-[var(--accent)] px-4 py-1.5 text-sm font-semibold text-white"
+            >
+              Subscribe
+            </a>
+          </div>
+        )}
+
+        <h2 className="mb-1 mt-4 text-sm font-bold">Up next</h2>
+        <div className="flex flex-col">
+          {suggestions.map((s) => (
+            <VideoCard key={s.id} video={s} />
+          ))}
+        </div>
+      </section>
+    </>
   );
 }
 
-function TopBar({ onBack }: { onBack: () => void }) {
+export default function WatchPage() {
   return (
-    <div className="sticky top-0 z-10 flex items-center bg-[var(--bg)] px-3 py-2">
-      <button onClick={onBack} className="text-sm text-[var(--fg)]">
-        ‹ Back
-      </button>
-    </div>
+    <main className="min-h-dvh">
+      <div className="sticky top-0 z-10 flex items-center bg-[var(--bg)] px-3 py-2">
+        <button onClick={() => history.back()} className="text-sm text-[var(--fg)]">
+          ‹ Back
+        </button>
+      </div>
+      <Suspense
+        fallback={
+          <p className="px-4 py-10 text-center text-sm text-[var(--muted)]">
+            Loading…
+          </p>
+        }
+      >
+        <WatchContent />
+      </Suspense>
+    </main>
   );
 }
