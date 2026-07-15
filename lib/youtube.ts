@@ -155,6 +155,70 @@ export async function getChannelData(): Promise<YouTubeResult<Channel>> {
   }
 }
 
+export async function getWatchData(
+  videoId: string,
+): Promise<YouTubeResult<{ video: Video; suggestions: Video[] }>> {
+  if (shouldUseMock()) {
+    const current =
+      mockVideos.find((v) => v.id === videoId) ??
+      { ...mockVideos[0], id: videoId, title: "Selected Stream" };
+    const suggestions = mockVideos.filter((v) => v.id !== current.id);
+    return { data: { video: current, suggestions }, isMock: true };
+  }
+  try {
+    const [videoJson, searchJson] = await Promise.all([
+      ytFetch<VideosResponse>("videos", {
+        part: "snippet,statistics,liveStreamingDetails",
+        id: videoId,
+      }),
+      ytFetch<SearchResponse>("search", {
+        part: "snippet",
+        channelId: CHANNEL_ID!,
+        type: "video",
+        order: "date",
+        maxResults: "12",
+      }),
+    ]);
+
+    const mapped = mapVideosResponse(videoJson);
+    const video = mapped[0] ?? {
+      id: videoId,
+      title: "Video",
+      thumbnailUrl: "/placeholder-thumb.svg",
+      publishedAt: new Date().toISOString(),
+      viewCount: "0",
+      isLive: false,
+      isUpcoming: false,
+      liveViewers: null,
+    };
+
+    const ids = Array.from(
+      new Set(searchJson.items.map((i) => i.id.videoId).filter(Boolean)),
+    ).filter((id) => id !== videoId);
+    if (ids.length === 0) {
+      return { data: { video, suggestions: [] }, isMock: false };
+    }
+
+    const stats = await ytFetch<VideosResponse>("videos", {
+      part: "snippet,statistics,liveStreamingDetails",
+      id: ids.join(","),
+    });
+    const suggestions = mapVideosResponse(stats).sort(
+      (a, b) =>
+        Number(b.isLive) - Number(a.isLive) ||
+        Number(b.isUpcoming) - Number(a.isUpcoming),
+    );
+
+    return { data: { video, suggestions }, isMock: false };
+  } catch {
+    const current = { ...mockVideos[0], id: videoId, title: "Selected Stream" };
+    return {
+      data: { video: current, suggestions: mockVideos.filter((v) => v.id !== videoId) },
+      isMock: true,
+    };
+  }
+}
+
 export async function getStreams(): Promise<YouTubeResult<Video[]>> {
   if (shouldUseMock()) return { data: mockVideos, isMock: true };
   try {
