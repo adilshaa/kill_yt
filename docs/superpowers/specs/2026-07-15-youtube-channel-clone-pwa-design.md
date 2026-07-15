@@ -62,8 +62,10 @@ public/
 - `getChannel(channelId, key)` → `channels.list?part=snippet,statistics` →
   banner/avatar/title/subscriberCount.
 - `getLiveStreams(channelId, key)` → `search.list?channelId=&eventType=live&type=video&order=date`.
-- `getRecentStreams(channelId, key)` → `search.list?channelId=&eventType=none&type=video&order=date`
-  (the channel's daily uploads); `liveStreamingDetails` present ⇒ currently live/upcoming.
+- `getRecentStreams(channelId, key)` → `search.list?channelId=&type=video&order=date`
+  (omit `eventType` to get all uploads = the channel's daily streams); a populated
+  `liveStreamingDetails` ⇒ currently live or upcoming. Combine with `getLiveStreams` so
+  live items are pinned to the top of the grid.
 - All functions: if `key` missing or fetch throws/non-200 ⇒ return `lib/mock.ts` data and
   flag `isMock` so the UI can show a subtle "sample data" notice.
 
