@@ -24,6 +24,9 @@ export interface ChannelsResponse {
     };
     statistics: { subscriberCount: string };
     brandingSettings?: { image?: { bannerExternalUrl?: string } };
+    contentDetails?: {
+      relatedPlaylists?: { uploads?: string };
+    };
   }>;
 }
 
@@ -63,6 +66,12 @@ export interface VideosResponse {
       scheduledStartTime?: string;
       concurrentViewers?: string;
     };
+  }>;
+}
+
+export interface PlaylistItemsResponse {
+  items: Array<{
+    contentDetails: { videoId: string };
   }>;
 }
 
@@ -142,6 +151,33 @@ export function mapVideosResponse(json: VideosResponse): Video[] {
   });
 }
 
+export async function getUploadsPlaylistId(
+  channelIdOrHandle: string,
+): Promise<string | null> {
+  // Try direct channel id lookup first.
+  try {
+    const byId = await ytFetch<ChannelsResponse>("channels", {
+      part: "contentDetails",
+      id: channelIdOrHandle,
+    });
+    const up = byId.items[0]?.contentDetails?.relatedPlaylists?.uploads;
+    if (up) return up;
+  } catch {
+    /* fall through to handle lookup */
+  }
+  // Fallback: the value may be a @handle (search.list id= quirk for some channels).
+  try {
+    const handle = channelIdOrHandle.replace(/^@/, "");
+    const byHandle = await ytFetch<ChannelsResponse>("channels", {
+      part: "contentDetails",
+      forHandle: handle,
+    });
+    return byHandle.items[0]?.contentDetails?.relatedPlaylists?.uploads ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getChannelData(): Promise<YouTubeResult<Channel>> {
   if (shouldUseMock()) return { data: mockChannel, isMock: true };
   try {
@@ -166,18 +202,12 @@ export async function getWatchData(
     return { data: { video: current, suggestions }, isMock: true };
   }
   try {
-    const [videoJson, searchJson] = await Promise.all([
+    const [videoJson, uploadsId] = await Promise.all([
       ytFetch<VideosResponse>("videos", {
         part: "snippet,statistics,liveStreamingDetails",
         id: videoId,
       }),
-      ytFetch<SearchResponse>("search", {
-        part: "snippet",
-        channelId: CHANNEL_ID!,
-        type: "video",
-        order: "date",
-        maxResults: "12",
-      }),
+      getUploadsPlaylistId(CHANNEL_ID!),
     ]);
 
     const mapped = mapVideosResponse(videoJson);
@@ -192,9 +222,18 @@ export async function getWatchData(
       liveViewers: null,
     };
 
-    const ids = Array.from(
-      new Set(searchJson.items.map((i) => i.id.videoId).filter(Boolean)),
-    ).filter((id) => id !== videoId);
+    if (!uploadsId) {
+      return { data: { video, suggestions: [] }, isMock: false };
+    }
+
+    const items = await ytFetch<PlaylistItemsResponse>("playlistItems", {
+      part: "contentDetails",
+      playlistId: uploadsId,
+      maxResults: "12",
+    });
+    const ids = items.items
+      .map((i) => i.contentDetails.videoId)
+      .filter((id) => id && id !== videoId);
     if (ids.length === 0) {
       return { data: { video, suggestions: [] }, isMock: false };
     }
@@ -222,31 +261,17 @@ export async function getWatchData(
 export async function getStreams(): Promise<YouTubeResult<Video[]>> {
   if (shouldUseMock()) return { data: mockVideos, isMock: true };
   try {
-    const [live, recent] = await Promise.all([
-      ytFetch<SearchResponse>("search", {
-        part: "snippet",
-        channelId: CHANNEL_ID!,
-        eventType: "live",
-        type: "video",
-        order: "date",
-        maxResults: "5",
-      }),
-      ytFetch<SearchResponse>("search", {
-        part: "snippet",
-        channelId: CHANNEL_ID!,
-        type: "video",
-        order: "date",
-        maxResults: "20",
-      }),
-    ]);
+    const uploadsId = await getUploadsPlaylistId(CHANNEL_ID!);
+    if (!uploadsId) return { data: [], isMock: false };
 
-    const ids = Array.from(
-      new Set(
-        [...live.items, ...recent.items]
-          .map((i) => i.id.videoId)
-          .filter(Boolean),
-      ),
-    );
+    const items = await ytFetch<PlaylistItemsResponse>("playlistItems", {
+      part: "contentDetails",
+      playlistId: uploadsId,
+      maxResults: "20",
+    });
+    const ids = items.items
+      .map((i) => i.contentDetails.videoId)
+      .filter(Boolean);
     if (ids.length === 0) return { data: [], isMock: false };
 
     const stats = await ytFetch<VideosResponse>("videos", {

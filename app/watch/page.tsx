@@ -23,14 +23,9 @@ function WatchContent() {
   const [video, setVideo] = useState<Video | null>(null);
   const [channel, setChannel] = useState<Channel | null>(null);
   const [suggestions, setSuggestions] = useState<Video[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!videoId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLoading(false);
-      return;
-    }
+    if (!videoId) return;
     let active = true;
     (async () => {
       try {
@@ -42,9 +37,8 @@ function WatchContent() {
         setVideo(watch.data.video);
         setSuggestions(watch.data.suggestions);
         setChannel(chan.data);
-      } finally {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        if (active) setLoading(false);
+      } catch {
+        /* keep last state */
       }
     })();
     return () => {
